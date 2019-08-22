@@ -36,24 +36,37 @@ connection.connect(function (err) {
 });
 function start() {
     inquirer
-        .prompt({
+        .prompt([{
             name: "item_id",
             type: "input",
             message: "What is the ID of the item you would like to purchase?",
 
-        })
-        .then(answers => {
-            console.info('Answer:', answers.item_id)
-        })
-};
-// function start() {
-    // inquirer
-        // .prompt({
-            // name: "quantity",
-            // type: "input",
-            // message: "How many units of that product would you like to purchase?",
+        },
 
-        // })
-        // .then(answers => {
-            // console.info('', answers.item_id)
-        // })};
+        ])
+        .then(answers => {
+            console.info('Answer', answers.item_id)
+        })
+
+    //             start()
+    //                 .then(function (answer) {
+    //                     // get the information of the chosen item
+    //                     var itemStock;
+    //                     for (var i = 0; i < results.length; i++) {
+    //                         if (results[i].itemStock === answer.item_id) {
+    //                             itemStock = results[i];
+
+    //                         }
+
+    //                         start()
+    //                             .then(answers => {
+    //                                 if (answers === item_id)
+    //                                     return ("product_name", "price", "stock_quantity"),
+    //                                         console.log(answers.item_id, "product_name", "price", "stock_quantity")
+
+    //                             })
+    //                     }
+    //                 })
+    //         )
+    // }}}
+}
