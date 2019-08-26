@@ -22,181 +22,153 @@ var con = mysql.createConnection({
     database: "bamazonDB"
 });
 
-con.connect(function (err) {
+connection.connect(function (err) {
     if (err) throw err;
-    start();
+    showItems();
 });
-connection.query("SELECT * FROM products", function (err, results) {
-    if (err) throw err;
-    // run the start function after the connection is made to prompt the user
-    start();
-});
-// function which prompts the user for what action they should take
-function start() {
-    inquirer
-        .prompt({
-            name: "welcome",
-            type: "list",
-            message: "Welcome to Bamazon! How can I help you?",
-            choices: ["Browse", "Place_Order", "EXIT"]
-        })
-        .then(function (answer) {
-            // based on their answer, either call the bid or the post functions
-            if (answer.welcome === "Browse") {
-                openCatalog();
+var chosenItem = {};
+var resetApp = function () {
+    chosenItem = [];
+}
+
+var showItems = function () {
+    connection.query('SELECT * FROM products', function (err, results) {
+        if (err) throw (err);
+
+        inquirer.prompt([
+            {
+                name: "choice",
+                type: 'rawlist',
+                choices: function () {
+                    var chosenItem = [];
+                    for (var i = 0; i < results.length; i++) {
+                        chosenItem.push([results[i].item_id, results[i].product_name, results[i].department_name, '$${results[i].price}']);
+                    }
+                    return chosenItem;
+                }
+            },])
+        console.log(`\n\n${chosenItem.toString()}\n\n`);
+        // ask user to enter ID of item they wish to purchase
+        askForID();
+    });
+
+    var askForID = function () {
+        inquirer.prompt({
+            name: 'itemID',
+            type: 'input',
+            message: 'Enter the ID of the item you would like to purchase:',
+            // validate input is number from 1-10
+            validate: (value) => {
+                if (!isNaN(value) && (value > 99 && value <= 111)) {
+                    return true;
+                } else {
+                    console.log(' => Please enter a number from 1-10');
+                    return false;
+                }
             }
-            else if (answer.welcome === "Place_Order") {
-                purchaseItem();
+            // select all rows where ID = user's input
+        }).then((answer) => {
+            connection.query('SELECT item_id, product_name, department_name, price, stock_quantity, FROM products WHERE ?', { item_id: answer.itemID }, (err, res) => {
+                // confirm with user that this is the product they'd like to purchase
+                confirmItem(res[0].product_name, res);
+            });
+        });
+    };
+
+    var confirmItem = function (product, object) {
+        inquirer.prompt({
+            name: 'confirmItem',
+            type: 'confirm',
+            message: `You chose` + (` '${product}'. `) + `Is this correct?`
+        }).then((answer) => {
+            if (answer.confirmItem) {
+                chosenItem = {
+                    item_id: object[0].item_id,
+                    product_name: object[0].product_name,
+                    department_name: object[0].department_name,
+                    price: object[0].price,
+                    stock_quantity: object[0].stock_quantity,
+
+                };
+                // ask how many they'd like to purchase
+                askHowMany(chosenItem.item_id);
             } else {
+                askForID();
+            }
+        });
+    };
+
+    // function to ask user how many of the products they'd like to purchase
+    var askHowMany = function (chosenID) {
+        inquirer.prompt({
+            name: 'howMany',
+            type: 'input',
+            message: 'How many would you like to purchase?',
+            validate: (value) => {
+                if (!isNaN(value) && value > 0) {
+                    return true;
+                } else {
+                    console.log(' => Oops, please enter a number greater than 0');
+                    return false;
+                }
+            }
+        }).then((answer) => {
+            connection.query('SELECT stock_quantity FROM products WHERE ?', { item_id: chosenItem.item_id }, (err, res) => {
+                // if there are not enough products in stock
+                if (res[0].stock_quantity < answer.howMany) {
+                    console.log('\n\tSorry, insufficient quantity in stock!\n');
+                    // confirm if user would still like to buy this product
+                    inquirer.prompt({
+                        name: 'proceed',
+                        type: 'confirm',
+                        message: 'Would you still like to purchase this product?'
+                    }).then((answer) => {
+                        if (answer.proceed) {
+                            askHowMany(chosenItem.item_id);
+                        } else {
+                            console.log('\n\tThanks for visiting! We hope to see you again soon.\n');
+                            connection.end();
+                        }
+                    });
+                    // if there are enough products in stock for purchase to go through
+                } else {
+                    chosenItem.howMany = answer.howMany;
+                    console.log('\n\tOrder processing...');
+                    // console.log(chosenItem);
+
+                    // update database to reflect new stock quantity after sale
+                    connection.query('UPDATE products SET ? WHERE ?', [
+                        {
+                            stock_quantity: chosenItem.stock_quantity - answer.howMany,
+                            product_sales: chosenItem.product_sales + (chosenItem.price * answer.howMany)
+                        },
+                        {
+                            item_id: chosenItem.item_id
+                        }
+                    ], (err, res) => {
+                        console.log(`\n\tOrder confirmed!!! Your total was $${(chosenItem.price * chosenItem.howMany).toFixed(2)}.\n`);
+                        // ask if user would like to make another purchase
+                        promptNewPurchase();
+                    });
+                }
+            });
+        });
+    }
+
+    // function to ask if user would like to make another purchase
+    var promptNewPurchase = function () {
+        inquirer.prompt({
+            name: 'newPurchase',
+            type: 'confirm',
+            message: 'Would you like to make another purchase?'
+        }).then((answer) => {
+            if (answer.newPurchase) {
+                resetCart();
+                askForID();
+            } else {
+                console.log('\n\tWe appreciate your business. Have a great day!\n');
                 connection.end();
             }
         });
-}
-function openCatalog() {
-    // query the database for all items being auctioned
-    // once you have the items, prompt the user for which they'd like to bid on
-    inquirer
-        .prompt([
-            {
-                name: "choice",
-                type: "input",
-                message: "What is the item_id o f the product you'd like to purchase?",
-                choices: function () {
-                    var choiceArray = [];
-                    for (var i = 0; i < results.length; i++) {
-                        choiceArray.push(results[i].item_id);
-                    }
-                    return choiceArray;
-                },
-                validate: function (value) {
-                    if (isNaN(value) === false) {
-                        return true;
-                    }
-                    return false;
-                },
-            }
-            //         choices: function () {
-            //             var choiceArray = [];
-            //             for (var i = 0; i < results.length; i++) {
-            //                 choiceArray.push(results[i].item_id);
-            //             }
-            //             return choiceArray;
-            //         },
-            //         message: "What auction would you like to place a bid in?"
-            //     },
-            //     {
-            //         name: "bid",
-            //         type: "input",
-            //         message: "How much would you like to bid?"
-            //     }
-            // ])
-            // .then(function (answer) {
-            //   // get the information of the chosen item
-            //   var chosenItem;
-            //   for (var i = 0; i < results.length; i++) {
-            //     if (results[i].item_name === answer.choice) {
-            //       chosenItem = results[i];
-            //     }
-            //   }
-
-            //   // determine if bid was high enough
-            //   if (chosenItem.highest_bid < parseInt(answer.bid)) {
-            //     // bid was high enough, so update db, let the user know, and start over
-            //     connection.query(
-            //       "UPDATE auctions SET ? WHERE ?",
-            //       [
-            //         {
-            //           highest_bid: answer.bid
-            //         },
-            //         {
-            //           id: chosenItem.id
-            //         }
-            //       ],
-            //       function (error) {
-            //         if (error) throw err;
-            //         console.log("Bid placed successfully!");
-            //         start();
-            //       }
-            //     );
-            //   }
-            //   else {
-            //     // bid wasn't high enough, so apologize and start over
-            //     console.log("Your bid was too low. Try again...");
-            //     start();
-            //   }
-            // });
-            // });
-            // // connection.connect(function (err) {
-            // //     if (err) throw err;
-            // //     // run the start function after the connection is made to prompt the user
-
-
-            // function start() {
-            //     inquirer
-            //         .prompt([{
-            //             name: "item_id",
-            //             type: "input",
-            //             message: "What is the ID of the item you would like to purchase?",
-
-            //         },
-
-            //         ])
-            //         .then(answers => {
-            //            var answers = "item_id";
-            //             console.info(answers.choice)
-            //         })
-            //         .then(function (answers) {
-            //             // get the information of the chosen item
-            //             var chosenItem = answers;
-            //             for (var i = 0; i < results.length; i++) {
-            //               if (results[i].item_id === answers.choice) {
-            //                 chosenItem = results[i];
-            //               }
-            //             }
-
-            //             // determine if bid was high enough
-            //             if (chosenItem. < parseInt(answer.bid)) {
-            //               // bid was high enough, so update db, let the user know, and start over
-            //               connection.query(
-            //                 "UPDATE auctions SET ? WHERE ?",
-            //                 [
-            //                   {
-            //                     highest_bid: answer.bid
-            //                   },
-            //                   {
-            //                     id: chosenItem.id
-            //                   }
-            //                 ],
-            //                 function (error) {
-            //                   if (error) throw err;
-            //                   console.log("Bid placed successfully!");
-            //                   start();
-            //                 }
-            //               );
-            //             }
-            //             start()
-            //                 .then(function (answer) {
-            //                     // get the information of the chosen item
-            //                     var itemStock;
-            //                     for (var i = 0; i < results.length; i++) {
-            //                         if (results[i].itemStock === answer.item_id) {
-            //                             itemStock = results[i];
-
-            //                         }
-
-            //                         start()
-            //                             .then(answers => {
-            //                                 if (answers === item_id)
-            //                                     return ("product_name", "price", "stock_quantity"),
-            //                                         console.log(answers.item_id, "product_name", "price", "stock_quantity")
-
-            //                             })
-            //                     }
-            //                 })
-            //         )
-            // }}}
-        ],
-
-        )
-}
-
+    }
+};
